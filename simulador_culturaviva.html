@@ -1,0 +1,2139 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CulturaViva CCS - Software de Parada Inteligente</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome 6 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Leaflet CSS & JS (Official standard for mapping in CulturaViva CCS) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brandNavy: '#0F2C59',
+            brandBlue: '#002B7F',
+            brandRed: '#CF142B',
+            brandYellow: '#F4B400',
+            catDeporte: '#0D6EFD',
+            catCine: '#8E24AA',
+            catTeatro: '#D32F2F',
+            catMusica: '#FB8C00',
+            catGastro: '#2E7D32',
+            catTurismo: '#00897B'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+    body {
+      font-family: 'Inter', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    .category-btn {
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .category-btn:hover {
+      transform: translateY(-4px) scale(1.02);
+      filter: brightness(1.08);
+    }
+
+    .category-btn:active {
+      transform: translateY(0) scale(0.98);
+    }
+
+    .category-btn.active {
+      box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.35), 0 0 0 4px #ffffff, 0 0 0 7px currentColor;
+      transform: translateY(-5px);
+    }
+
+    .event-card {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .event-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.12);
+    }
+
+    .event-card-media {
+      position: relative;
+      width: 100%;
+      height: 192px;
+      min-height: 192px;
+      max-height: 192px;
+      flex: 0 0 192px;
+      overflow: hidden;
+      background-color: #0f172a;
+    }
+
+    .event-card-media img {
+      display: block;
+      width: 100%;
+      height: 192px;
+      min-height: 192px;
+      object-fit: cover;
+    }
+
+    .leaflet-popup-content-wrapper {
+      border-radius: 16px;
+      padding: 0;
+      overflow: hidden;
+      box-shadow: 0 15px 30px rgba(0, 0, 0, 0.25);
+    }
+
+    .leaflet-popup-content {
+      margin: 0;
+      line-height: 1.4;
+    }
+
+    .radar-pulse {
+      position: relative;
+    }
+
+    .radar-pulse::after {
+      content: '';
+      position: absolute;
+      top: -6px;
+      left: -6px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 3px solid #F4B400;
+      animation: radarPulse 1.8s infinite ease-out;
+    }
+
+    @keyframes radarPulse {
+      0% {
+        transform: scale(0.6);
+        opacity: 1;
+      }
+
+      100% {
+        transform: scale(1.6);
+        opacity: 0;
+      }
+    }
+
+    #toast-notice {
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Grid adaptable: cuantas más columnas quepan en el ancho disponible, más actividades se ven por fila */
+    #cards-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(265px, 1fr));
+      grid-auto-rows: max-content;
+      gap: 1rem;
+    }
+
+    @media (min-width: 1024px) {
+      #left-today-panel {
+        width: var(--left-panel-pct, 68%);
+        flex: 0 0 var(--left-panel-pct, 68%);
+      }
+
+      #left-today-panel.expanded-full {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+      }
+    }
+  </style>
+</head>
+
+<body
+  class="bg-[#ECEFF1] text-slate-800 min-h-screen lg:h-screen lg:overflow-hidden flex flex-col selection:bg-amber-400 selection:text-black relative">
+
+  <!-- TOAST DE NOTIFICACIÓN DE RUTA / ITINERARIO -->
+  <div id="toast-notice"
+    class="fixed top-20 right-6 z-50 bg-[#0F2C59] text-white px-4 py-3 rounded-2xl shadow-2xl border-2 border-amber-400 flex items-center gap-3 transform translate-y-[-150%] opacity-0 pointer-events-none">
+    <div class="w-8 h-8 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-bold text-sm">
+      <i class="fa-solid fa-route"></i>
+    </div>
+    <div>
+      <div id="toast-title" class="text-xs font-bold text-amber-300">Actividad Agregada a tu Ruta</div>
+      <p id="toast-msg" class="text-[11px] text-slate-200">18:00 • Teatro Teresa Carreño</p>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- BARRA SUPERIOR INSTITUCIONAL Y DE CONTEXTO (TOP BAR) -->
+  <!-- ======================================================== -->
+  <header
+    class="bg-white/95 backdrop-blur-md border-b border-slate-200 px-6 py-2.5 flex items-center justify-between shadow-sm sticky top-0 z-40">
+    <!-- Logotipo Oficial CulturaViva CCS -->
+    <div class="flex items-center space-x-3 cursor-pointer" onclick="resetToAllCategories()">
+      <!-- Escudo / Icono Tricolor Venezuela -->
+      <div
+        class="w-10 h-10 rounded-xl bg-gradient-to-b from-[#F4B400] via-[#002B7F] to-[#CF142B] p-0.5 shadow-md flex items-center justify-center">
+        <div class="w-full h-full bg-[#0F2C59] rounded-[10px] flex items-center justify-center">
+          <span class="text-white font-black text-xl italic tracking-tighter">V</span>
+        </div>
+      </div>
+      <!-- Texto Logo -->
+      <div class="flex items-baseline font-black tracking-tight text-2xl leading-none">
+        <span class="text-[#0F2C59]">Cultura</span>
+        <span class="text-[#CF142B] ml-0.5">Viva</span>
+        <span class="text-[#F4B400] ml-1.5 font-extrabold text-xl">CCS</span>
+      </div>
+      <div class="hidden md:flex items-center pl-2 border-l border-slate-300 ml-2">
+        <span
+          class="text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+          Software Kiosk v2.6 • MinCyT / UNC
+        </span>
+      </div>
+    </div>
+
+    <!-- Centro: Ciudad, Hora, Clima, Botón MI RUTA y Botón MAPA -->
+    <div class="flex items-center space-x-3">
+      <div class="flex items-center space-x-2 text-slate-700 font-medium text-sm">
+        <span class="font-bold text-[#0F2C59]">Caracas</span>
+        <span class="text-slate-300">•</span>
+        <span id="live-clock" class="font-semibold text-slate-800">15:54</span>
+        <span class="text-slate-300">•</span>
+        <div class="flex items-center space-x-1 text-slate-700">
+          <span class="font-semibold">24°C</span>
+          <i class="fa-solid fa-cloud-sun text-amber-500 text-base ml-0.5"></i>
+        </div>
+      </div>
+
+      <!-- BOTÓN DESTACADO 1: MI RUTA CULTURAL DEL DÍA -->
+      <button onclick="openDailyRouteModal()" id="btn-top-itinerary"
+        class="bg-[#0F2C59] hover:bg-blue-900 text-white font-black text-xs px-3.5 py-1.5 rounded-xl shadow-md transition flex items-center gap-2 border border-blue-700 hover:scale-105 active:scale-95"
+        title="Ver mi itinerario organizado de actividades para el día">
+        <i class="fa-solid fa-route text-amber-400 text-sm"></i>
+        <span>Mi Ruta del Día</span>
+        <span id="route-count-badge"
+          class="bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.2 rounded-full">2</span>
+      </button>
+
+      <!-- BOTÓN DESTACADO 2: MAPA DE CARACAS -->
+      <button onclick="openCaracasMapModal()"
+        class="bg-[#F4B400] hover:bg-amber-300 text-[#0F2C59] font-black text-xs px-3.5 py-1.5 rounded-xl shadow-md transition flex items-center gap-1.5 border border-amber-500 hover:scale-105 active:scale-95"
+        title="Ver todas las ubicaciones en el mapa interactivo de Caracas">
+        <i class="fa-solid fa-map-location-dot text-sm text-[#0F2C59]"></i>
+        <span>Mapa Caracas</span>
+      </button>
+    </div>
+
+    <!-- Derecha: Selector de Idioma, Audio TTS y Modo Móvil -->
+    <div class="flex items-center space-x-3">
+      <div
+        class="bg-[#0F2C59] text-white text-xs font-bold rounded-xl px-3 py-1.5 flex items-center space-x-2 shadow-inner">
+        <button onclick="setLanguage('es')" id="lang-es" class="text-amber-400 hover:text-white transition">ES</button>
+        <span class="text-slate-500 font-normal">|</span>
+        <button onclick="setLanguage('en')" id="lang-en" class="text-slate-300 hover:text-white transition">EN</button>
+        <span class="text-slate-500 font-normal">|</span>
+        <button onclick="setLanguage('pt')" id="lang-pt" class="text-slate-300 hover:text-white transition">PT</button>
+      </div>
+
+      <button onclick="readScreenAloud()"
+        class="text-[#0F2C59] hover:text-[#002B7F] p-2 rounded-xl hover:bg-slate-100 transition flex items-center justify-center text-xl"
+        title="Lectura por voz (TTS)">
+        <i class="fa-solid fa-volume-high"></i>
+      </button>
+
+      <button onclick="togglePhoneDrawer()"
+        class="hidden lg:flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-xl border border-slate-300 transition"
+        title="Ver cómo se recibe en el teléfono móvil">
+        <i class="fa-solid fa-mobile-screen-button text-blue-600"></i>
+        <span>Ver Móvil</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ======================================================== -->
+  <!-- CONTENEDOR PRINCIPAL FLUIDO (OCUPA TODO EL ANCHO Y ALTO DISPONIBLE) -->
+  <!-- ======================================================== -->
+  <main class="flex-1 min-h-0 w-full px-4 sm:px-6 py-3 flex flex-col gap-3">
+
+    <!-- ÁREA DE CONTENIDO REDIMENSIONABLE (IZQUIERDA: HOY | DIVISOR AJUSTABLE | DERECHA: PRÓXIMAS) -->
+    <div id="panels-split" class="flex-1 min-h-0 flex flex-col lg:flex-row items-stretch gap-4 lg:gap-0">
+
+      <!-- =================================================== -->
+      <!-- BLOQUE IZQUIERDO: ACTIVIDADES DE HOY (ORGANIZADAS POR HORA) -->
+      <!-- =================================================== -->
+      <div id="left-today-panel" class="flex flex-col min-h-0 min-w-0 bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+
+        <!-- Encabezado de la Sección Hoy -->
+        <div id="section-header-banner"
+          class="shrink-0 bg-[#0F2C59] text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-2 transition-colors duration-300">
+          <div>
+            <h2 id="section-header-title"
+              class="text-xl sm:text-2xl font-black uppercase tracking-wide flex items-center gap-3">
+              <span id="section-header-icon"><i class="fa-solid fa-clock text-amber-400"></i></span>
+              <span id="section-header-text">ACTIVIDADES DE HOY (CARACAS)</span>
+            </h2>
+            <p id="section-header-sub" class="text-xs text-slate-300 font-medium mt-0.5">
+              Todas las actividades del día organizadas cronológicamente por hora (08:00 AM - 20:00 PM)
+            </p>
+          </div>
+          <!-- Accesos: Botón 'Ver Todas' / Mi Ruta / Mapa / Ampliar Ancho -->
+          <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="resetToAllCategories()" id="btn-show-all"
+              class="bg-white/20 hover:bg-white/30 text-white text-xs font-extrabold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 border border-white/30"
+              title="Ver todas las categorías">
+              <i class="fa-solid fa-layer-group text-amber-400"></i>
+              <span>Ver Todas</span>
+            </button>
+            <button onclick="openDailyRouteModal()"
+              class="bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow">
+              <i class="fa-solid fa-route"></i>
+              <span>Mi Itinerario</span>
+            </button>
+            <button onclick="openCaracasMapForCategory(activeCategory)"
+              class="bg-white/15 hover:bg-white/25 text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-white/25 transition flex items-center gap-1.5"
+              title="Ver en el mapa de Caracas">
+              <i class="fa-solid fa-map-pin text-amber-400"></i>
+              <span>Mapa</span>
+            </button>
+            <button onclick="toggleExpandMainPanel()" id="btn-toggle-expand"
+              class="hidden lg:flex bg-white/15 hover:bg-white/25 text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-white/25 transition items-center gap-1.5"
+              title="Ampliar o restaurar el ancho de las actividades de hoy">
+              <i class="fa-solid fa-up-right-and-down-left-from-center text-amber-400" id="icon-toggle-expand"></i>
+              <span id="label-toggle-expand">Ampliar</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Barra de filtros: volver a TODAS las actividades del día o elegir una categoría -->
+        <div class="shrink-0 px-5 pt-3 flex flex-wrap items-center gap-2" id="chip-bar">
+          <button onclick="resetToAllCategories()" id="chip-all"
+            class="chip px-3.5 py-1.5 rounded-full text-xs font-black border-2 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-layer-group"></i> Todas las actividades del día
+          </button>
+          <button onclick="setCategory('deporte')" id="chip-deporte"
+            class="chip px-3 py-1.5 rounded-full text-xs font-bold border-2 transition flex items-center gap-1.5"><i
+              class="fa-solid fa-person-running"></i> Deporte</button>
+          <button onclick="setCategory('cine')" id="chip-cine"
+            class="chip px-3 py-1.5 rounded-full text-xs font-bold border-2 transition flex items-center gap-1.5"><i
+              class="fa-solid fa-video"></i> Cine</button>
+          <button onclick="setCategory('teatro')" id="chip-teatro"
+            class="chip px-3 py-1.5 rounded-full text-xs font-bold border-2 transition flex items-center gap-1.5"><i
+              class="fa-solid fa-masks-theater"></i> Teatro</button>
+          <button onclick="setCategory('musica')" id="chip-musica"
+            class="chip px-3 py-1.5 rounded-full text-xs font-bold border-2 transition flex items-center gap-1.5"><i
+              class="fa-solid fa-music"></i> Música</button>
+          <button onclick="setCategory('gastronomia')" id="chip-gastronomia"
+            class="chip px-3 py-1.5 rounded-full text-xs font-bold border-2 transition flex items-center gap-1.5"><i
+              class="fa-solid fa-utensils"></i> Gastronomía</button>
+          <button onclick="setCategory('turismo')" id="chip-turismo"
+            class="chip px-3 py-1.5 rounded-full text-xs font-bold border-2 transition flex items-center gap-1.5"><i
+              class="fa-solid fa-map-location-dot"></i> Turismo</button>
+        </div>
+
+        <!-- Aviso de filtro activo con botón para volver a lo general -->
+        <div id="back-banner"
+          class="shrink-0 hidden mx-5 mt-2.5 px-4 py-2 rounded-2xl bg-amber-50 border-2 border-amber-300 flex items-center justify-between gap-3">
+          <span id="back-banner-text" class="text-xs font-bold text-amber-900"></span>
+          <button onclick="resetToAllCategories()"
+            class="bg-[#0F2C59] hover:bg-blue-900 text-white text-xs font-black px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow shrink-0">
+            <i class="fa-solid fa-arrow-left"></i> Volver a todas las actividades del día
+          </button>
+        </div>
+
+        <div class="px-5 pt-3 pb-3 flex-1 min-h-0 flex flex-col gap-2.5">
+          <div id="cards-scroll-wrapper" class="flex-1 min-h-[320px] overflow-y-auto pr-1">
+            <div id="cards-container">
+              <!-- Tarjetas inyectadas dinámicamente: se adaptan en 1, 2, 3, 4 o más columnas según el ancho -->
+            </div>
+          </div>
+
+          <!-- Indicadores de Guía Interactiva -->
+          <div
+            class="shrink-0 flex items-center justify-between text-xs text-slate-500 font-medium pt-2 border-t border-slate-100">
+            <div class="flex items-center gap-1.5 cursor-pointer hover:text-slate-800"
+              onclick="openDetailModal(todayEvents[0])">
+              <span class="text-base text-slate-700">↖</span>
+              <span>Toque para ampliar</span>
+            </div>
+            <div
+              class="flex items-center gap-1.5 cursor-pointer hover:text-[#0F2C59] font-bold bg-amber-100/70 text-amber-900 px-3 py-1 rounded-full border border-amber-300"
+              onclick="openDailyRouteModal()">
+              <i class="fa-solid fa-calendar-check text-amber-600"></i>
+              <span id="timeline-indicator-text">Organizar Itinerario: 12 actividades hoy</span>
+            </div>
+            <div class="flex items-center gap-1.5 cursor-pointer hover:text-slate-800"
+              onclick="triggerQR(todayEvents[0])">
+              <span class="text-base text-slate-700">↖</span>
+              <span>Escanear para el móvil</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- =================================================== -->
+      <!-- DIVISOR ARRASTRABLE PARA AJUSTAR EL ANCHO EN VIVO -->
+      <!-- =================================================== -->
+      <div id="panel-resizer"
+        class="hidden lg:flex w-4 shrink-0 cursor-col-resize items-center justify-center group select-none"
+        title="Arrastra hacia los lados para ajustar el ancho de la sección principal">
+        <div
+          class="w-1.5 h-20 rounded-full bg-slate-300 group-hover:bg-amber-400 group-active:bg-[#0F2C59] transition-all flex items-center justify-center shadow-sm">
+        </div>
+      </div>
+
+      <!-- =================================================== -->
+      <!-- BLOQUE DERECHO: PRÓXIMAS ACTIVIDADES (ORGANIZADAS POR FECHA Y HORA) -->
+      <!-- =================================================== -->
+      <div id="right-upcoming-panel" class="flex-1 flex flex-col min-h-0 min-w-[280px] bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+
+        <!-- Encabezado de Próximas Actividades -->
+        <div class="shrink-0 px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 id="upcoming-header-title"
+              class="text-base sm:text-lg font-black text-slate-900 uppercase tracking-tight">PRÓXIMAS ACTIVIDADES</h2>
+            <p id="upcoming-header-sub" class="text-xs text-slate-500 font-medium">(Próximos días organizados por fecha
+              y hora)</p>
+          </div>
+          <button onclick="openCaracasMapModal()"
+            class="text-slate-700 hover:text-blue-700 transition text-lg flex items-center gap-1 font-semibold text-xs bg-slate-100 px-2.5 py-1 rounded-xl">
+            <i class="fa-solid fa-map"></i>
+            <span>Ver Mapa</span>
+          </button>
+        </div>
+
+        <!-- Lista Scrollable de Próximos Eventos -->
+        <div class="p-4 flex-1 min-h-[260px] overflow-y-auto space-y-3.5" id="upcoming-list">
+          <!-- Inyectado dinámicamente ordenado por fecha y hora -->
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- BARRA INFERIOR DE 6 CATEGORÍAS VIBRANTES (TOUCH BUTTONS) -->
+    <!-- ======================================================== -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 pt-2">
+
+      <!-- 1. DEPORTE -->
+      <button onclick="selectCategory('deporte')" id="btn-cat-deporte"
+        class="category-btn bg-[#0D6EFD] text-white rounded-3xl p-4 flex flex-col items-center justify-center shadow-md cursor-pointer border-2 border-transparent">
+        <i class="fa-solid fa-person-running text-3xl mb-1.5"></i>
+        <span class="font-extrabold text-base tracking-tight">Deporte</span>
+      </button>
+
+      <!-- 2. CINE -->
+      <button onclick="selectCategory('cine')" id="btn-cat-cine"
+        class="category-btn bg-[#8E24AA] text-white rounded-3xl p-4 flex flex-col items-center justify-center shadow-md cursor-pointer border-2 border-transparent">
+        <i class="fa-solid fa-video text-3xl mb-1.5"></i>
+        <span class="font-extrabold text-base tracking-tight">Cine</span>
+      </button>
+
+      <!-- 3. TEATRO -->
+      <button onclick="selectCategory('teatro')" id="btn-cat-teatro"
+        class="category-btn bg-[#D32F2F] text-white rounded-3xl p-4 flex flex-col items-center justify-center shadow-md cursor-pointer border-2 border-transparent">
+        <i class="fa-solid fa-masks-theater text-3xl mb-1.5"></i>
+        <span class="font-extrabold text-base tracking-tight">Teatro</span>
+      </button>
+
+      <!-- 4. MÚSICA -->
+      <button onclick="selectCategory('musica')" id="btn-cat-musica"
+        class="category-btn bg-[#FB8C00] text-white rounded-3xl p-4 flex flex-col items-center justify-center shadow-md cursor-pointer border-2 border-transparent">
+        <i class="fa-solid fa-music text-3xl mb-1.5"></i>
+        <span class="font-extrabold text-base tracking-tight">Música</span>
+      </button>
+
+      <!-- 5. GASTRONOMÍA -->
+      <button onclick="selectCategory('gastronomia')" id="btn-cat-gastronomia"
+        class="category-btn bg-[#2E7D32] text-white rounded-3xl p-4 flex flex-col items-center justify-center shadow-md cursor-pointer border-2 border-transparent">
+        <i class="fa-solid fa-utensils text-3xl mb-1.5"></i>
+        <span class="font-extrabold text-base tracking-tight">Gastronomía</span>
+      </button>
+
+      <!-- 6. TURISMO -->
+      <button onclick="selectCategory('turismo')" id="btn-cat-turismo"
+        class="category-btn bg-[#00897B] text-white rounded-3xl p-4 flex flex-col items-center justify-center shadow-md cursor-pointer border-2 border-transparent">
+        <i class="fa-solid fa-map-location-dot text-3xl mb-1.5"></i>
+        <span class="font-extrabold text-base tracking-tight">Turismo</span>
+      </button>
+
+    </div>
+
+  </main>
+
+  <!-- ======================================================== -->
+  <!-- BARRA FLOTANTE INFERIOR: RESUMEN DE ITINERARIO ACTIVO -->
+  <!-- ======================================================== -->
+  <div id="floating-itinerary-bar"
+    class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-900/95 backdrop-blur-md text-white border-2 border-amber-400 p-3 px-5 rounded-2xl shadow-2xl flex items-center justify-between gap-6 z-40 hidden max-w-lg w-full transition-all">
+    <div class="flex items-center gap-3">
+      <div
+        class="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 font-black flex items-center justify-center text-base shrink-0 shadow">
+        <i class="fa-solid fa-route"></i>
+      </div>
+      <div>
+        <div class="text-xs font-bold text-white flex items-center gap-2">
+          <span>Mi Ruta Cultural:</span>
+          <span id="floating-count"
+            class="bg-amber-400 text-slate-950 px-2 py-0.2 rounded-full font-black text-[10px]">2 actividades</span>
+        </div>
+        <p class="text-[11px] text-slate-300 truncate max-w-[220px]" id="floating-preview">08:00 Maratón • 18:00
+          Teatro...</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <button onclick="openDailyRouteModal()"
+        class="bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black px-3 py-1.5 rounded-xl shadow transition">
+        Ver Ruta
+      </button>
+      <button onclick="transferDailyRouteQR()"
+        class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow transition flex items-center gap-1">
+        <i class="fa-solid fa-qrcode"></i> Móvil
+      </button>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- MODAL: MI RUTA CULTURAL DEL DÍA (ITINERARIO PERSONALIZADO) -->
+  <!-- ======================================================== -->
+  <div id="modal-daily-route"
+    class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div
+      class="bg-white rounded-3xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden border border-slate-300">
+
+      <!-- Header de la Ruta -->
+      <div class="bg-[#0F2C59] text-white p-5 px-6 flex items-center justify-between border-b border-blue-900">
+        <div class="flex items-center gap-3">
+          <div
+            class="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center text-xl font-black shadow">
+            <i class="fa-solid fa-route"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-black uppercase tracking-tight flex items-center gap-2">
+              <span>MI RUTA CULTURAL DEL DÍA</span>
+              <span id="route-modal-badge"
+                class="bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full">2 Actividades</span>
+            </h2>
+            <p class="text-xs text-slate-300">Tu agenda organizada para hoy en Caracas • Guarda y transfiere a tu
+              smartphone</p>
+          </div>
+        </div>
+        <button onclick="closeDailyRouteModal()"
+          class="w-9 h-9 rounded-2xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-lg transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Resumen de Itinerario y Rutas Rápidas -->
+      <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-4 text-slate-700">
+          <div><i class="fa-solid fa-calendar-check text-blue-600 mr-1"></i> <span id="route-summary-count">2 eventos
+              seleccionados</span></div>
+          <div><i class="fa-solid fa-clock text-amber-600 mr-1"></i> <span id="route-summary-span">Jornada Mañana -
+              Noche</span></div>
+          <div><i class="fa-solid fa-ticket text-emerald-600 mr-1"></i> <span>100% Acceso Gratuito</span></div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="loadPresetRoute('deporte_musica')"
+            class="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:border-amber-500 font-semibold text-[11px] shadow-sm">
+            + Deporte & Música
+          </button>
+          <button onclick="loadPresetRoute('cultura_gastro')"
+            class="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:border-amber-500 font-semibold text-[11px] shadow-sm">
+            + Historia & Sabores
+          </button>
+        </div>
+      </div>
+
+      <!-- Lista Cronológica del Itinerario -->
+      <div class="p-6 flex-1 overflow-y-auto space-y-4" id="daily-route-timeline"></div>
+
+      <!-- Acciones Inferiores del Itinerario -->
+      <div class="p-4 bg-slate-100 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <button onclick="clearDailyRoute()"
+          class="text-xs text-red-600 hover:text-red-800 font-semibold flex items-center gap-1">
+          <i class="fa-solid fa-trash-can"></i> Limpiar Itinerario
+        </button>
+        <div class="flex items-center gap-3">
+          <button onclick="showRouteOnCaracasMap()"
+            class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow">
+            <i class="fa-solid fa-map-location-dot text-amber-400"></i> Ver Ruta Trazada en Mapa
+          </button>
+          <button onclick="transferDailyRouteQR()"
+            class="px-4 py-2.5 rounded-xl bg-[#0F2C59] hover:bg-blue-900 text-white font-black text-xs flex items-center gap-2 transition shadow-lg">
+            <i class="fa-solid fa-qrcode text-amber-400 text-sm"></i> Transferir Mi Itinerario (QR)
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- MODAL / SECCIÓN DE PANTALLA COMPLETA: MAPA DE CARACAS -->
+  <!-- ======================================================== -->
+  <div id="modal-caracas-map"
+    class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex flex-col p-3 sm:p-6 hidden">
+    <div class="bg-white rounded-3xl flex-1 flex flex-col shadow-2xl overflow-hidden border border-slate-300">
+
+      <div class="bg-[#0F2C59] text-white p-4 px-6 flex flex-wrap items-center justify-between gap-3 shadow-md">
+        <div class="flex items-center space-x-3">
+          <div
+            class="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black text-xl shadow">
+            <i class="fa-solid fa-map-location-dot"></i>
+          </div>
+          <div>
+            <h2 class="text-lg sm:text-xl font-black uppercase tracking-tight flex items-center gap-2">
+              <span>MAPA INTERACTIVO DE CARACAS</span>
+              <span id="map-mode-label" class="bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">EN
+                VIVO</span>
+            </h2>
+            <p class="text-xs text-slate-300">
+              <span class="text-amber-400 font-bold"><i class="fa-solid fa-location-crosshairs mr-1"></i>Parada
+                Origen:</span> Bellas Artes (Av. México)
+            </p>
+          </div>
+        </div>
+
+        <!-- Filtros Rápidos por Categoría en el Mapa -->
+        <div class="flex items-center gap-1.5 overflow-x-auto py-1">
+          <button onclick="filterMapCategory('all')" id="map-pill-all"
+            class="map-filter-pill px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-400 text-slate-950 shadow">
+            Todos (18)
+          </button>
+          <button onclick="filterMapCategory('myroute')" id="map-pill-myroute"
+            class="map-filter-pill px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-700 text-white hover:bg-blue-600 border border-amber-400">
+            <i class="fa-solid fa-route text-amber-400 mr-1"></i> Mi Ruta (<span id="map-pill-route-count">2</span>)
+          </button>
+          <button onclick="filterMapCategory('deporte')" id="map-pill-deporte"
+            class="map-filter-pill px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-white hover:bg-slate-700">
+            Deporte
+          </button>
+          <button onclick="filterMapCategory('cine')" id="map-pill-cine"
+            class="map-filter-pill px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-white hover:bg-slate-700">
+            Cine
+          </button>
+          <button onclick="filterMapCategory('teatro')" id="map-pill-teatro"
+            class="map-filter-pill px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-white hover:bg-slate-700">
+            Teatro
+          </button>
+          <button onclick="filterMapCategory('musica')" id="map-pill-musica"
+            class="map-filter-pill px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-white hover:bg-slate-700">
+            Música
+          </button>
+          <button onclick="filterMapCategory('gastronomia')" id="map-pill-gastronomia"
+            class="map-filter-pill px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-white hover:bg-slate-700">
+            Gastronomía
+          </button>
+          <button onclick="filterMapCategory('turismo')" id="map-pill-turismo"
+            class="map-filter-pill px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-white hover:bg-slate-700">
+            Turismo
+          </button>
+        </div>
+
+        <button onclick="closeCaracasMapModal()"
+          class="w-10 h-10 rounded-2xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xl transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        <div class="w-full md:w-80 lg:w-96 bg-slate-50 border-r border-slate-200 flex flex-col overflow-hidden">
+          <div class="p-3 bg-white border-b border-slate-200 flex items-center justify-between text-xs">
+            <span class="font-bold text-slate-800 flex items-center gap-1.5">
+              <i class="fa-solid fa-compass text-blue-600"></i> Ubicaciones Georreferenciadas
+            </span>
+            <span id="map-event-count"
+              class="bg-blue-100 text-blue-800 text-[10px] font-black px-2 py-0.5 rounded-full">18 Sitios</span>
+          </div>
+
+          <div id="map-places-list" class="flex-1 overflow-y-auto p-3 space-y-2.5"></div>
+
+          <div
+            class="p-3 bg-slate-100 border-t border-slate-200 text-[11px] text-slate-600 flex items-center justify-between">
+            <span><i class="fa-solid fa-train-subway text-red-600 mr-1"></i> Conexión con Metro L1</span>
+            <button onclick="centerMapOnOrigin()" class="text-blue-700 font-bold hover:underline">
+              Centrar aquí
+            </button>
+          </div>
+        </div>
+
+        <div class="flex-1 relative bg-slate-100">
+          <div id="caracas-leaflet-map" class="w-full h-full z-10"></div>
+
+          <div
+            class="absolute bottom-5 left-5 z-20 bg-white/95 backdrop-blur-md p-3 rounded-2xl shadow-xl border border-slate-200 max-w-xs text-xs space-y-1">
+            <div class="flex items-center gap-2">
+              <span class="w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-slate-900 inline-block"></span>
+              <span class="font-bold text-slate-900">Tu Parada Inteligente Actual</span>
+            </div>
+            <p class="text-[10px] text-slate-600">Haz clic sobre cualquier actividad para agregarla a tu ruta del día o
+              ver el itinerario completo trazado.</p>
+          </div>
+
+          <button onclick="resetCaracasMapView()"
+            class="absolute top-4 right-4 z-20 bg-white hover:bg-slate-100 text-slate-800 p-2.5 rounded-xl shadow-lg border border-slate-200 text-xs font-bold flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-arrows-to-eye text-blue-600"></i>
+            <span>Vista Valle de Caracas</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- MODAL: DETALLE DEL EVENTO ("Toque para ampliar") -->
+  <!-- ======================================================== -->
+  <div id="modal-detail"
+    class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div
+      class="bg-white rounded-3xl max-w-xl w-full overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[90vh]">
+      <div class="relative h-48 bg-slate-900">
+        <img id="modal-img" src="" alt="Evento Detalle" onerror="imgFallback(this, selectedEventForModal.category)"
+          class="w-full h-full object-cover">
+        <button onclick="closeDetailModal()"
+          class="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+        <div class="absolute bottom-3 left-4 flex gap-2">
+          <span id="modal-badge-cat"
+            class="text-white text-xs font-black px-3 py-1 rounded-full uppercase shadow">Cultura</span>
+          <span class="bg-[#2E7D32] text-white text-xs font-black px-3 py-1 rounded-full uppercase shadow">Entrada
+            Gratuita</span>
+        </div>
+      </div>
+      <div class="p-6 overflow-y-auto space-y-4">
+        <div>
+          <h3 id="modal-title" class="text-2xl font-black text-slate-900">Festival de Teatro de Caracas</h3>
+          <p id="modal-venue" class="text-sm font-semibold text-slate-600 mt-1 flex items-center gap-1.5">
+            <i class="fa-solid fa-location-dot text-red-600"></i>
+            <span>Teatro Teresa Carreño • Sala Ríos Reyna</span>
+          </p>
+        </div>
+        <p id="modal-desc" class="text-sm text-slate-600 leading-relaxed"></p>
+        <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between text-xs">
+          <div>
+            <span class="font-bold text-slate-700 block">Cómo llegar desde esta Parada:</span>
+            <span id="modal-transit" class="text-slate-500">A pie (350 metros, ~4 minutos por Parque Los Caobos)</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="locateCurrentModalOnMap()"
+              class="p-2 bg-amber-100 text-amber-800 rounded-xl hover:bg-amber-200 transition font-bold text-xs flex items-center gap-1"
+              title="Ver en Mapa">
+              <i class="fa-solid fa-map-pin"></i> Mapa
+            </button>
+            <button onclick="readModalAloud()"
+              class="p-2 bg-blue-100 text-blue-800 rounded-xl hover:bg-blue-200 transition" title="Escuchar">
+              <i class="fa-solid fa-volume-high"></i>
+            </button>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3 pt-2">
+          <button id="modal-btn-add-route" onclick="toggleRouteItemFromModal()"
+            class="py-3.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-2xl text-xs shadow-md flex items-center justify-center gap-2 transition">
+            <i class="fa-solid fa-calendar-plus text-base"></i>
+            <span>AGREGAR A MI RUTA</span>
+          </button>
+          <button onclick="triggerQRFromModal()"
+            class="py-3.5 bg-[#0F2C59] hover:bg-[#002B7F] text-white font-extrabold rounded-2xl text-xs shadow-md flex items-center justify-center gap-2 transition">
+            <i class="fa-solid fa-qrcode text-base"></i>
+            <span>TRANSFERIR A MÓVIL</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- MODAL: CÓDIGO QR ("Escanear para el móvil") -->
+  <!-- ======================================================== -->
+  <div id="modal-qr"
+    class="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl relative">
+      <button onclick="closeQrModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-700 text-lg">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+      <div
+        class="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto text-2xl font-bold mb-2">
+        <i class="fa-solid fa-qrcode"></i>
+      </div>
+      <h3 id="qr-modal-title" class="text-lg font-black text-slate-900">Transferir Itinerario al Móvil</h3>
+      <p id="qr-modal-subtitle" class="text-xs text-slate-500 mt-1">Escanea para sincronizar tu ruta cultural del día
+        con la App CulturaViva CCS.</p>
+
+      <div class="bg-white p-4 rounded-2xl border-2 border-slate-200 inline-block my-4 shadow-inner">
+        <svg class="w-44 h-44" viewBox="0 0 100 100">
+          <rect x="5" y="5" width="28" height="28" fill="#0F2C59" />
+          <rect x="9" y="9" width="20" height="20" fill="#fff" />
+          <rect x="13" y="13" width="12" height="12" fill="#0F2C59" />
+          <rect x="67" y="5" width="28" height="28" fill="#0F2C59" />
+          <rect x="71" y="9" width="20" height="20" fill="#fff" />
+          <rect x="75" y="13" width="12" height="12" fill="#0F2C59" />
+          <rect x="5" y="67" width="28" height="28" fill="#0F2C59" />
+          <rect x="9" y="71" width="20" height="20" fill="#fff" />
+          <rect x="13" y="75" width="12" height="12" fill="#0F2C59" />
+          <rect x="38" y="10" width="8" height="8" fill="#0F2C59" />
+          <rect x="50" y="15" width="8" height="8" fill="#0F2C59" />
+          <rect x="42" y="28" width="16" height="8" fill="#0F2C59" />
+          <rect x="10" y="42" width="12" height="8" fill="#0F2C59" />
+          <rect x="28" y="42" width="12" height="16" fill="#0F2C59" />
+          <rect x="45" y="45" width="14" height="14" fill="#0F2C59" />
+          <rect x="65" y="40" width="24" height="8" fill="#0F2C59" />
+          <rect x="70" y="55" width="12" height="18" fill="#0F2C59" />
+          <rect x="38" y="70" width="10" height="20" fill="#0F2C59" />
+          <rect x="55" y="72" width="20" height="10" fill="#0F2C59" />
+          <rect x="80" y="80" width="10" height="10" fill="#0F2C59" />
+        </svg>
+      </div>
+
+      <div class="text-[11px] font-mono text-emerald-600 font-bold mb-4" id="qr-status-msg">
+        ✓ Paquete de ruta: 2 actividades vinculadas
+      </div>
+
+      <button onclick="syncAndOpenPhoneView()"
+        class="w-full py-3 bg-[#0F2C59] hover:bg-[#002B7F] text-white font-extrabold rounded-2xl text-xs shadow-md transition flex items-center justify-center gap-2">
+        <i class="fa-solid fa-mobile-screen-button"></i>
+        <span>SIMULAR APERTURA EN SMARTPHONE</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- DRAWER / PANEL LATERAL: SIMULADOR DE APP MÓVIL SMARTPHONE -->
+  <!-- ======================================================== -->
+  <div id="phone-drawer"
+    class="fixed inset-y-0 right-0 max-w-sm w-full bg-slate-900 shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col border-l border-slate-700">
+    <div class="bg-slate-950 p-4 border-b border-slate-800 flex items-center justify-between text-white">
+      <div class="flex items-center space-x-2">
+        <div class="w-6 h-6 rounded bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">CV
+        </div>
+        <span class="text-xs font-bold tracking-tight">CulturaViva CCS (App Móvil)</span>
+      </div>
+      <button onclick="togglePhoneDrawer()" class="text-slate-400 hover:text-white text-sm">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <div class="flex-1 p-4 overflow-y-auto space-y-4 text-slate-200">
+      <div class="bg-blue-950/60 border border-blue-600/40 p-3 rounded-2xl">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] text-amber-400 font-bold uppercase block">Tu Itinerario del Día</span>
+          <span id="phone-itinerary-badge"
+            class="bg-amber-400 text-slate-950 text-[9px] font-black px-1.5 py-0.2 rounded-full">2 Paradas</span>
+        </div>
+        <h4 class="text-sm font-black text-white mt-1">Ruta Personalizada Caracas</h4>
+        <p class="text-xs text-slate-300 mt-0.5">Transferida desde Parada Bellas Artes</p>
+      </div>
+
+      <div class="space-y-2.5 text-xs">
+        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Actividades Organizadas para
+          Hoy:</span>
+        <div id="phone-itinerary-items" class="space-y-2"></div>
+      </div>
+
+      <div
+        class="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 p-3 rounded-2xl flex items-center gap-3">
+        <i class="fa-solid fa-award text-2xl text-amber-400"></i>
+        <div class="text-[11px]">
+          <span class="font-bold text-white block">Insignia: Planificador Urbano</span>
+          <span class="text-slate-400">Has organizado tu día cultural y deportivo con éxito.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- LÓGICA JAVASCRIPT: MODELO DE DATOS, FILTRADO Y RENDERIZADO -->
+  <!-- ======================================================== -->
+  <script>
+    const ORIGIN_STOP = {
+      name: "Parada Inteligente Bellas Artes (Av. México)",
+      coords: [10.5005, -66.8990]
+    };
+
+    const categoryMetadata = {
+      deporte: { name: "Deporte", color: "#0D6EFD", icon: "person-running" },
+      cine: { name: "Cine", color: "#8E24AA", icon: "video" },
+      teatro: { name: "Teatro", color: "#D32F2F", icon: "masks-theater" },
+      musica: { name: "Música", color: "#FB8C00", icon: "music" },
+      gastronomia: { name: "Gastronomía", color: "#2E7D32", icon: "utensils" },
+      turismo: { name: "Turismo", color: "#00897B", icon: "map-location-dot" }
+    };
+
+    // ==========================================
+    // 1. ACTIVIDADES DE HOY (ORGANIZADAS POR HORA)
+    // ==========================================
+    const todayEvents = [
+      {
+        id: "th-d1",
+        title: "Circuito de Trote Comunal & Calistenia",
+        venue: "Parque Los Caobos / Bellas Artes",
+        category: "deporte",
+        coords: [10.5015, -66.8965],
+        time: "08:00 AM",
+        timeHour: 8.0,
+        free: true,
+        img: "img/deporte.jpg",
+        desc: "Sesión comunal de calentamiento guiado y carrera matutina de 5k por las avenidas perimetrales del parque.",
+        transit: "Frente a la parada inteligente (cero desplazamiento)",
+        color: "#0D6EFD",
+        icon: "person-running"
+      },
+      {
+        id: "th-tu1",
+        title: "Recorrido Patrimonial 'Caracas Histórica'",
+        venue: "Casco Central (Plaza Bolívar a Casa Natal)",
+        category: "turismo",
+        coords: [10.5060, -66.9135],
+        time: "10:30 AM",
+        timeHour: 10.5,
+        free: true,
+        img: "img/casco_historico.jpg",
+        desc: "Ruta peatonal con guías especializados por los monumentos históricos de la época independentista.",
+        transit: "Metro L1 hacia Capitolio (3 paradas)",
+        color: "#00897B",
+        icon: "map-location-dot"
+      },
+      {
+        id: "th-g1",
+        title: "Feria de Gastronomía Tradicional Criolla",
+        venue: "Plaza La Candelaria",
+        category: "gastronomia",
+        coords: [10.5050, -66.9060],
+        time: "12:00 PM",
+        timeHour: 12.0,
+        free: true,
+        img: "img/gastronomia.jpg",
+        desc: "Encuentro de fogones comunales, dulcería criolla y platos tradicionales caraqueños de mediodía.",
+        transit: "Caminata de 6 minutos desde Estación Bellas Artes",
+        color: "#2E7D32",
+        icon: "utensils"
+      },
+      {
+        id: "th-c1",
+        title: "Muestra de Cortos y Cine Venezolano",
+        venue: "Cinemateca Nacional (Bellas Artes)",
+        category: "cine",
+        coords: [10.5010, -66.8980],
+        time: "14:00 PM",
+        timeHour: 14.0,
+        free: true,
+        img: "img/cinemateca.jpg",
+        desc: "Ciclo de animación y nuevos creadores audiovisuales de la Universidad Nacional de las Artes.",
+        transit: "Caminata de 3 minutos por el corredor de la Galería de Arte",
+        color: "#8E24AA",
+        icon: "video"
+      },
+      {
+        id: "th-g2",
+        title: "Ruta del Cacao y Café Venezolano",
+        venue: "Bulevar Panteón & Plaza Bolívar",
+        category: "gastronomia",
+        coords: [10.5065, -66.9145],
+        time: "16:00 PM",
+        timeHour: 16.0,
+        free: true,
+        img: "img/cacao_cafe.jpg",
+        desc: "Degustación guiada de chocolates artesanales de Miranda y café de origen de la cordillera de la Costa.",
+        transit: "Metro Línea 1 a Capitolio, caminata hacia Plaza Bolívar",
+        color: "#2E7D32",
+        icon: "utensils"
+      },
+      {
+        id: "th-tu2",
+        title: "Circuito Mirador y Teleférico Waraira Repano",
+        venue: "Sistema Teleférico Maripérez",
+        category: "turismo",
+        coords: [10.5090, -66.8880],
+        time: "16:30 PM",
+        timeHour: 16.5,
+        free: false,
+        img: "img/turismo.jpg",
+        desc: "Ascenso hacia el Parque Nacional con vista panorámica de 360 grados de todo el valle de Caracas al atardecer.",
+        transit: "Metrobús Ruta 211 desde Plaza Venezuela hasta estación Maripérez",
+        color: "#00897B",
+        icon: "map-location-dot"
+      },
+      {
+        id: "th-d2",
+        title: "Clínica Abierta de Baloncesto Comunal",
+        venue: "Canchas Públicas Chacao - Altamira",
+        category: "deporte",
+        coords: [10.4930, -66.8570],
+        time: "17:00 PM",
+        timeHour: 17.0,
+        free: true,
+        img: "img/baloncesto.jpg",
+        desc: "Torneo relámpago 3x3 para jóvenes y clínica formativa con glorias deportivas caraqueñas.",
+        transit: "Metro L1 directo a Estación Altamira (10 min)",
+        color: "#0D6EFD",
+        icon: "person-running"
+      },
+      {
+        id: "th-m1",
+        title: "Gala Sinfónica Juvenil",
+        venue: "Sala Simón Bolívar (Quebrada Honda)",
+        category: "musica",
+        coords: [10.5030, -66.9030],
+        time: "17:30 PM",
+        timeHour: 17.5,
+        free: true,
+        img: "img/sinfonica.jpg",
+        desc: "Repertorio clásico latinoamericano a cargo de la Orquesta Sinfónica Juan José Landaeta.",
+        transit: "Metro Colegio de Ingenieros (1 estación desde Bellas Artes)",
+        color: "#FB8C00",
+        icon: "music"
+      },
+      {
+        id: "th-t1",
+        title: "Festival de Teatro de Caracas",
+        venue: "Teatro Teresa Carreño (Sala Ríos Reyna)",
+        category: "teatro",
+        coords: [10.5002, -66.8996],
+        time: "18:00 PM",
+        timeHour: 18.0,
+        free: true,
+        img: "img/teatro.jpg",
+        desc: "Presentación estelar de agrupaciones teatrales nacionales en la emblemática Sala Ríos Reyna.",
+        transit: "A pie (350 metros, ~4 min por Parque Los Caobos)",
+        color: "#D32F2F",
+        icon: "masks-theater"
+      },
+      {
+        id: "th-c2",
+        title: "Cine Bajo las Estrellas (Proyección Abierta)",
+        venue: "Plaza Los Museos / Bellas Artes",
+        category: "cine",
+        coords: [10.5008, -66.8975],
+        time: "19:00 PM",
+        timeHour: 19.0,
+        free: true,
+        img: "img/cine.jpg",
+        desc: "Proyección nocturna al aire libre de cine documental patrimonial y largometrajes venezolanos.",
+        transit: "A 200m de la parada inteligente, acceso por la fuente de los museos",
+        color: "#8E24AA",
+        icon: "video"
+      },
+      {
+        id: "th-m2",
+        title: "Concierto de Música Urbana y Fusión",
+        venue: "Plaza Francia de Altamira",
+        category: "musica",
+        coords: [10.4962, -66.8529],
+        time: "19:30 PM",
+        timeHour: 19.5,
+        free: true,
+        img: "img/musica.jpg",
+        desc: "Artistas emergentes y presentaciones de hip-hop y percusión caribeña en el obelisco de Altamira.",
+        transit: "Metro Línea 1 hasta Altamira, salida norte a la plaza",
+        color: "#FB8C00",
+        icon: "music"
+      },
+      {
+        id: "th-t2",
+        title: "Gala Teatral Municipal",
+        venue: "Teatro Municipal de Caracas",
+        category: "teatro",
+        coords: [10.5048, -66.9189],
+        time: "20:00 PM",
+        timeHour: 20.0,
+        free: true,
+        img: "img/teatro_municipal.jpg",
+        desc: "Comedia clásica venezolana y recorrido guiado por el foyer histórico del teatro más antiguo de Caracas.",
+        transit: "Metro L1 hacia Capitolio (3 paradas desde Bellas Artes)",
+        color: "#D32F2F",
+        icon: "masks-theater"
+      }
+    ];
+
+    // ==========================================
+    // 2. ACTIVIDADES DE LOS DÍAS CONSIGUIENTES
+    // ==========================================
+    const upcomingEvents = [
+      {
+        id: "up-d1",
+        date: "22 Nov",
+        dateSort: 22,
+        time: "08:00 AM",
+        timeHour: 8.0,
+        title: "Maratón Caracas Inteligente",
+        venue: "Parque del Este (Francisco de Miranda)",
+        category: "deporte",
+        coords: [10.4950, -66.8400],
+        free: true,
+        img: "img/deporte.jpg",
+        desc: "Carrera pedestre metropolitana por el anillo vial de Caracas con puntos de hidratación inteligente.",
+        transit: "Metro Línea 1 hasta Estación Miranda",
+        color: "#0D6EFD",
+        icon: "person-running"
+      },
+      {
+        id: "up-tu1",
+        date: "22 Nov",
+        dateSort: 22,
+        time: "16:30 PM",
+        timeHour: 16.5,
+        title: "Circuito Teleférico Waraira Repano",
+        venue: "Sistema Teleférico Maripérez",
+        category: "turismo",
+        coords: [10.5090, -66.8880],
+        free: false,
+        img: "img/turismo.jpg",
+        desc: "Ascenso hacia el Parque Nacional con mirador astronómico y gastronomía típica.",
+        transit: "Metrobús desde Plaza Venezuela",
+        color: "#00897B",
+        icon: "map-location-dot"
+      },
+      {
+        id: "up-t1",
+        date: "23 Nov",
+        dateSort: 23,
+        time: "18:00 PM",
+        timeHour: 18.0,
+        title: "Obra 'Caracas en Tres Actos'",
+        venue: "Teatro Nacional de Caracas",
+        category: "teatro",
+        coords: [10.5020, -66.9150],
+        free: true,
+        img: "img/teatro_municipal.jpg",
+        desc: "Montaje histórico sobre las memorias de la ciudad capital en el majestuoso Teatro Nacional.",
+        transit: "Metro Teatros (Línea 2/4)",
+        color: "#D32F2F",
+        icon: "masks-theater"
+      },
+      {
+        id: "up-c1",
+        date: "23 Nov",
+        dateSort: 23,
+        time: "19:00 PM",
+        timeHour: 19.0,
+        title: "Cine Bajo las Estrellas",
+        venue: "Bulevar de Sabana Grande",
+        category: "cine",
+        coords: [10.4920, -66.8770],
+        free: true,
+        img: "img/cine.jpg",
+        desc: "Función comunal en pantalla gigante en el corredor peatonal de Sabana Grande.",
+        transit: "Metro Línea 1 hasta Sabana Grande",
+        color: "#8E24AA",
+        icon: "video"
+      },
+      {
+        id: "up-g1",
+        date: "24 Nov",
+        dateSort: 24,
+        time: "12:00 PM",
+        timeHour: 12.0,
+        title: "Feria Gastronómica de Caracas",
+        venue: "Plaza Alfredo Sadel, Las Mercedes",
+        category: "gastronomia",
+        coords: [10.4780, -66.8620],
+        free: true,
+        img: "img/gastronomia.jpg",
+        desc: "Exposición de emprendedores gastronómicos, cacao, café y comida urbana tradicional.",
+        transit: "Ruta de Metrobús desde Chacaíto hacia Las Mercedes",
+        color: "#2E7D32",
+        icon: "utensils"
+      },
+      {
+        id: "up-m1",
+        date: "24 Nov",
+        dateSort: 24,
+        time: "17:30 PM",
+        timeHour: 17.5,
+        title: "Festival de Jazz & Ritmos Caribeños",
+        venue: "Centro de Arte La Estancia (Altamira)",
+        category: "musica",
+        coords: [10.4955, -66.8480],
+        free: true,
+        img: "img/sinfonica.jpg",
+        desc: "Concierto al aire libre en los jardines coloniales de La Estancia con bandas de jazz latino.",
+        transit: "Metro Altamira a 200 metros",
+        color: "#FB8C00",
+        icon: "music"
+      },
+      {
+        id: "up-d2",
+        date: "25 Nov",
+        dateSort: 25,
+        time: "07:00 AM",
+        timeHour: 7.0,
+        title: "Entrenamiento de Ascenso Ávila",
+        venue: "Punto de Acceso Sabas Nieves (Waraira Repano)",
+        category: "deporte",
+        coords: [10.5180, -66.8490],
+        free: true,
+        img: "img/turismo.jpg",
+        desc: "Caminata y trote de ascenso guiado por guardaparques y atletas comunitarios.",
+        transit: "Transporte público desde Altamira hacia la entrada de Sabas Nieves",
+        color: "#0D6EFD",
+        icon: "person-running"
+      },
+      {
+        id: "up-tu2",
+        date: "25 Nov",
+        dateSort: 25,
+        time: "10:00 AM",
+        timeHour: 10.0,
+        title: "Ruta de los Próceres y Monumentos",
+        venue: "Paseo Los Próceres (Santa Mónica)",
+        category: "turismo",
+        coords: [10.4720, -66.8980],
+        free: true,
+        img: "img/casco_historico.jpg",
+        desc: "Circuito cívico monumental y ciclovía dominical en el Paseo Los Próceres.",
+        transit: "Metro Los Símbolos / Ciudad Universitaria",
+        color: "#00897B",
+        icon: "map-location-dot"
+      },
+      {
+        id: "up-c2",
+        date: "26 Nov",
+        dateSort: 26,
+        time: "18:30 PM",
+        timeHour: 18.5,
+        title: "Festival de Cine Comunitario",
+        venue: "Parque Central (Nivel Bulevar)",
+        category: "cine",
+        coords: [10.4990, -66.9020],
+        free: true,
+        img: "img/cinemateca.jpg",
+        desc: "Proyección de producciones audiovisuales barriales y documentales de Caracas.",
+        transit: "Metro Parque Central",
+        color: "#8E24AA",
+        icon: "video"
+      },
+      {
+        id: "up-m2",
+        date: "26 Nov",
+        dateSort: 26,
+        time: "19:00 PM",
+        timeHour: 19.0,
+        title: "Tributo al Son y la Salsa Caraqueña",
+        venue: "Bulevar de Catia (Plaza Sucre)",
+        category: "musica",
+        coords: [10.5180, -66.9400],
+        free: true,
+        img: "img/musica.jpg",
+        desc: "Encuentro de orquestas populares y baile al aire libre en el oeste de la ciudad.",
+        transit: "Metro Plaza Sucre (Línea 1)",
+        color: "#FB8C00",
+        icon: "music"
+      },
+      {
+        id: "up-g2",
+        date: "27 Nov",
+        dateSort: 27,
+        time: "15:00 PM",
+        timeHour: 15.0,
+        title: "Encuentro de Maestros Chocolateros",
+        venue: "Casco Colonial de El Hatillo",
+        category: "gastronomia",
+        coords: [10.4260, -66.8240],
+        free: true,
+        img: "img/cacao_cafe.jpg",
+        desc: "Talleres en vivo de bombonería venezolana y degustación de chocolate premiado internacionalmente.",
+        transit: "Transporte público desde Chacaíto hacia El Hatillo",
+        color: "#2E7D32",
+        icon: "utensils"
+      }
+    ];
+
+    // Colección consolidada para el Mapa
+    const allCaracasEvents = [...todayEvents, ...upcomingEvents];
+
+    // ESTADO GLOBAL: Categoría Activa ('all' por defecto para mostrar todo de hoy)
+    let activeCategory = 'all';
+    let selectedEventForModal = todayEvents[0];
+
+    // ITINERARIO DEL DÍA
+    let myDailyRoute = [
+      todayEvents.find(e => e.id === "th-d1"), // 08:00 AM Deporte Los Caobos
+      todayEvents.find(e => e.id === "th-t1")  // 18:00 PM Teatro Teresa Carreño
+    ].filter(Boolean);
+
+    // ==========================================
+    // RENDERIZADO: ACTIVIDADES DE HOY (POR HORA)
+    // ==========================================
+    function renderTodayCards() {
+      const container = document.getElementById('cards-container');
+      let filtered = [];
+
+      if (activeCategory === 'all') {
+        // TODAS LAS ACTIVIDADES DE HOY ORGANIZADAS POR HORA
+        filtered = [...todayEvents].sort((a, b) => a.timeHour - b.timeHour);
+        document.getElementById('section-header-title').innerHTML = `
+          <span id="section-header-icon"><i class="fa-solid fa-clock text-amber-400"></i></span>
+          <span id="section-header-text">ACTIVIDADES DE HOY (CARACAS)</span>
+        `;
+        document.getElementById('section-header-sub').innerText = `Todas las actividades del día organizadas cronológicamente por hora (${filtered.length} eventos)`;
+        document.getElementById('section-header-banner').style.backgroundColor = '#0F2C59';
+        document.getElementById('timeline-indicator-text').innerText = `Mostrando ${filtered.length} actividades hoy en Caracas`;
+      } else {
+        // SOLO LAS ACTIVIDADES DE LA CATEGORÍA SELECCIONADA PARA HOY
+        filtered = todayEvents.filter(e => e.category === activeCategory).sort((a, b) => a.timeHour - b.timeHour);
+        const cat = categoryMetadata[activeCategory];
+        document.getElementById('section-header-title').innerHTML = `
+          <span id="section-header-icon"><i class="fa-solid fa-${cat.icon} text-amber-400"></i></span>
+          <span id="section-header-text">ACTIVIDADES DE ${cat.name.toUpperCase()} HOY</span>
+        `;
+        document.getElementById('section-header-sub').innerText = `Eventos de ${cat.name} para hoy organizados cronológicamente por hora (${filtered.length} disponibles)`;
+        document.getElementById('section-header-banner').style.backgroundColor = cat.color;
+        document.getElementById('timeline-indicator-text').innerText = `${filtered.length} actividades de ${cat.name} hoy`;
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-full text-center py-12 text-slate-400">
+            <i class="fa-solid fa-calendar-xmark text-4xl mb-3 text-slate-300"></i>
+            <h4 class="font-bold text-slate-700 text-sm">No hay actividades de esta categoría programadas para hoy</h4>
+            <p class="text-xs text-slate-500 mt-1">Revisa el panel derecho para ver las fechas de los próximos días.</p>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '';
+      filtered.forEach(item => {
+        const inRoute = isEventInRoute(item.id);
+        html += `
+          <div class="event-card bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm group cursor-pointer" onclick="openDetailModal(todayEvents.find(e => e.id === '${item.id}'))">
+            <div class="event-card-media shrink-0">
+              <img src="${item.img}" alt="${item.title}" loading="eager" onerror="imgFallback(this, '${item.category}')" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
+              <div class="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/75 to-transparent"></div>
+              <div class="absolute bottom-2 left-3 bg-amber-400 text-slate-950 font-black text-sm px-3 py-0.5 rounded-lg shadow flex items-center gap-1.5">
+                <i class="fa-regular fa-clock"></i> ${item.time}
+              </div>
+              <div class="absolute top-3 left-3 flex gap-1.5 flex-wrap">
+                <span class="bg-[#0F2C59] text-white text-[11px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow">HOY</span>
+                <span class="bg-[#2E7D32] text-white text-[11px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow">${item.free ? 'Gratis' : 'Entrada'}</span>
+                <span style="background:${item.color}" class="text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shadow flex items-center gap-1">
+                  <i class="fa-solid fa-${item.icon}"></i> ${item.category}
+                </span>
+              </div>
+              <div class="absolute bottom-2 right-2 bg-black/60 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded font-mono">
+                Escanear ruta
+              </div>
+            </div>
+            <div class="p-4 flex items-center justify-between gap-3">
+              <div class="flex-1">
+                <h3 class="font-extrabold text-slate-900 text-base leading-tight group-hover:text-blue-700 transition">${item.title}</h3>
+                <p class="text-xs text-slate-600 font-medium mt-1 flex items-center gap-1 hover:text-blue-600 cursor-pointer" onclick="event.stopPropagation(); locateEventOnMap(todayEvents.find(e => e.id === '${item.id}'))">
+                  <i class="fa-solid fa-location-dot text-red-500"></i>
+                  <span>${item.venue}</span>
+                </p>
+                <div class="flex items-center gap-2 mt-1.5">
+                  <span class="bg-amber-100 text-amber-950 font-black text-xs px-2.5 py-0.5 rounded-lg border border-amber-300 flex items-center gap-1">
+                    <i class="fa-regular fa-clock text-amber-700"></i> ${item.time}
+                  </span>
+                  <span class="text-[10px] text-slate-400">• Acceso Libre</span>
+                </div>
+              </div>
+              
+              <!-- Botón QR & Botón Ruta idéntico al diseño oficial -->
+              <div class="flex flex-col items-center bg-slate-50 p-2 rounded-xl border border-slate-200 shrink-0">
+                <div class="w-11 h-11 bg-white p-0.5 rounded border border-slate-300 flex items-center justify-center cursor-pointer hover:border-amber-500 transition" onclick="event.stopPropagation(); triggerQR(todayEvents.find(e => e.id === '${item.id}'))" title="Escanear QR">
+                  <svg class="w-full h-full" viewBox="0 0 24 24" fill="#0F2C59">
+                    <path d="M2 2h8v8H2V2zm2 2v4h4V4H4zm-2 10h8v8H2v-8zm2 2v4h4v-4H4zm10-14h8v8h-8V2zm2 2v4h4V4h-4zm-1 10h2v2h-2v-2zm3 0h3v2h-3v-2zm-3 3h2v3h-2v-3zm3 1h3v2h-3v-2zm-3 3h5v2h-5v-2zm6-5h2v4h-2v-4z" />
+                  </svg>
+                </div>
+                <button onclick="event.stopPropagation(); toggleRouteItem(todayEvents.find(e => e.id === '${item.id}'))" class="mt-1 ${inRoute ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-[#0F2C59] hover:bg-blue-800'} text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wide transition flex items-center gap-1">
+                  ${inRoute ? '<i class="fa-solid fa-check text-[8px]"></i> En Ruta' : '<i class="fa-solid fa-plus text-[8px]"></i> Ruta'}
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    // ==========================================
+    // RENDERIZADO: PRÓXIMAS ACTIVIDADES (POR FECHA Y HORA)
+    // ==========================================
+    function renderUpcomingList() {
+      const container = document.getElementById('upcoming-list');
+      let filtered = [];
+
+      if (activeCategory === 'all') {
+        filtered = [...upcomingEvents].sort((a, b) => (a.dateSort - b.dateSort) || (a.timeHour - b.timeHour));
+        document.getElementById('upcoming-header-title').innerText = "PRÓXIMAS ACTIVIDADES";
+        document.getElementById('upcoming-header-sub').innerText = "(Próximos días • Todas las categorías)";
+      } else {
+        filtered = upcomingEvents.filter(e => e.category === activeCategory).sort((a, b) => (a.dateSort - b.dateSort) || (a.timeHour - b.timeHour));
+        const cat = categoryMetadata[activeCategory];
+        document.getElementById('upcoming-header-title').innerText = `PRÓXIMAS • ${cat.name.toUpperCase()}`;
+        document.getElementById('upcoming-header-sub').innerText = `(${cat.name} organizado por fecha y hora)`;
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-10 text-slate-400">
+            <i class="fa-solid fa-calendar-xmark text-3xl mb-2 text-slate-300"></i>
+            <p class="text-xs text-slate-500">No hay más eventos programados para los próximos días en esta categoría.</p>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '';
+      filtered.forEach(item => {
+        const inRoute = isEventInRoute(item.id);
+        const [day, mon] = item.date.split(' ');
+        html += `
+          <div class="flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 transition border border-transparent hover:border-slate-200 cursor-pointer" onclick="openDetailModal(upcomingEvents.find(e => e.id === '${item.id}'))">
+            <div class="flex items-center space-x-3">
+              <img src="${item.img}" onerror="imgFallback(this, '${item.category}')" class="w-14 h-14 rounded-xl object-cover shrink-0 shadow-sm">
+              <!-- Bloque Fecha -->
+              <div class="w-12 h-14 bg-[#0F2C59] text-white rounded-xl flex flex-col items-center justify-center font-bold shrink-0 shadow-sm">
+                <span class="text-base font-extrabold leading-none">${day}</span>
+                <span class="text-[10px] uppercase tracking-wider text-slate-300">${mon}</span>
+              </div>
+              <!-- Textos -->
+              <div>
+                <h4 class="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight">${item.title}</h4>
+                <div class="flex items-center space-x-2 mt-1">
+                  <span style="background:${item.color}" class="text-white text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    ${item.category}
+                  </span>
+                  <span class="text-[11px] text-slate-600 font-medium">${item.venue}</span>
+                </div>
+              </div>
+            </div>
+            <!-- Hora y Botón Ruta -->
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] font-bold text-slate-700 font-mono">${item.time}</span>
+              <button onclick="event.stopPropagation(); toggleRouteItem(upcomingEvents.find(e => e.id === '${item.id}'))" class="${inRoute ? 'bg-emerald-600 text-white' : 'bg-[#0F2C59] hover:bg-blue-800 text-white'} text-[10px] font-bold px-2.5 py-1 rounded-lg transition" title="Añadir a mi itinerario">
+                ${inRoute ? '✓ En Ruta' : '+ Ruta'}
+              </button>
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    // ==========================================
+    // CONTROL DE SELECCIÓN DE CATEGORÍAS (FILTRO)
+    // ==========================================
+    function selectCategory(catKey) {
+      // Los botones inferiores alternan: tocar la categoría activa vuelve a lo general
+      setCategory(activeCategory === catKey ? 'all' : catKey);
+    }
+
+    function setCategory(catKey) {
+      activeCategory = catKey;
+      updateCategoryButtonsUI();
+      renderTodayCards();
+      renderUpcomingList();
+      const sw = document.getElementById('cards-scroll-wrapper');
+      if (sw) sw.scrollTop = 0;
+
+      if (activeCategory === 'all') {
+        speak("Mostrando todas las actividades del día organizadas cronológicamente por hora.");
+      } else {
+        const catName = categoryMetadata[activeCategory].name;
+        speak(`Filtrando categoría ${catName}: actividades de hoy por hora y próximos días por fecha.`);
+      }
+    }
+
+    function resetToAllCategories() {
+      activeCategory = 'all';
+      updateCategoryButtonsUI();
+      renderTodayCards();
+      renderUpcomingList();
+      const sw = document.getElementById('cards-scroll-wrapper');
+      if (sw) sw.scrollTop = 0;
+      speak("Mostrando todas las actividades del día en Caracas ordenadas por hora.");
+    }
+
+    // Si una imagen remota no carga, usa la foto local de la categoría
+    function imgFallback(img, cat) {
+      img.onerror = null;
+      img.src = `img/${cat}.jpg`;
+    }
+
+    function updateCategoryButtonsUI() {
+      document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('active'));
+
+      // Chips superiores
+      document.querySelectorAll('.chip').forEach(chip => {
+        chip.style.background = '#ffffff';
+        chip.style.color = '#334155';
+        chip.style.borderColor = '#e2e8f0';
+      });
+      const activeChip = document.getElementById(activeCategory === 'all' ? 'chip-all' : `chip-${activeCategory}`);
+      if (activeChip) {
+        const col = activeCategory === 'all' ? '#0F2C59' : categoryMetadata[activeCategory].color;
+        activeChip.style.background = col;
+        activeChip.style.color = '#ffffff';
+        activeChip.style.borderColor = col;
+      }
+
+      const banner = document.getElementById('back-banner');
+      if (activeCategory !== 'all') {
+        const activeBtn = document.getElementById(`btn-cat-${activeCategory}`);
+        if (activeBtn) activeBtn.classList.add('active');
+        document.getElementById('btn-show-all').classList.remove('bg-white/20');
+        document.getElementById('btn-show-all').classList.add('bg-amber-400', 'text-slate-950', 'font-black');
+        document.getElementById('back-banner-text').innerText = `Estás viendo solo ${categoryMetadata[activeCategory].name} (hoy y próximos días)`;
+        banner.classList.remove('hidden');
+      } else {
+        document.getElementById('btn-show-all').classList.remove('bg-amber-400', 'text-slate-950', 'font-black');
+        document.getElementById('btn-show-all').classList.add('bg-white/20');
+        banner.classList.add('hidden');
+      }
+    }
+
+    // ==========================================
+    // SISTEMA DE "MI RUTA CULTURAL DEL DÍA"
+    // ==========================================
+    function isEventInRoute(eventId) {
+      return myDailyRoute.some(e => e.id === eventId);
+    }
+
+    function toggleRouteItem(eventObj) {
+      if (!eventObj) return;
+      const index = myDailyRoute.findIndex(e => e.id === eventObj.id);
+      if (index >= 0) {
+        myDailyRoute.splice(index, 1);
+        showToast("Eliminado de tu Ruta", `${eventObj.title} fue removido de tu itinerario.`);
+        speak(`Actividad eliminada de tu itinerario: ${eventObj.title}`);
+      } else {
+        myDailyRoute.push(eventObj);
+        myDailyRoute.sort((a, b) => a.timeHour - b.timeHour);
+        showToast("¡Agregado a tu Ruta!", `${eventObj.time} • ${eventObj.title}`);
+        speak(`Actividad agregada a tu ruta del día: ${eventObj.title} a las ${eventObj.time}`);
+      }
+      updateRouteUI();
+    }
+
+    function toggleRouteItemFromModal() {
+      toggleRouteItem(selectedEventForModal);
+      updateModalRouteButton();
+    }
+
+    function updateModalRouteButton() {
+      const btn = document.getElementById('modal-btn-add-route');
+      if (!btn) return;
+      const inRoute = isEventInRoute(selectedEventForModal.id);
+      if (inRoute) {
+        btn.className = "py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-2xl text-xs shadow-md flex items-center justify-center gap-2 transition";
+        btn.innerHTML = `<i class="fa-solid fa-check text-base"></i><span>EN MI RUTA (QUITAR)</span>`;
+      } else {
+        btn.className = "py-3.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-2xl text-xs shadow-md flex items-center justify-center gap-2 transition";
+        btn.innerHTML = `<i class="fa-solid fa-calendar-plus text-base"></i><span>AGREGAR A MI RUTA</span>`;
+      }
+    }
+
+    function updateRouteUI() {
+      const count = myDailyRoute.length;
+      document.getElementById('route-count-badge').innerText = count;
+      document.getElementById('map-pill-route-count').innerText = count;
+
+      // Re-renderizar listas para actualizar botones
+      renderTodayCards();
+      renderUpcomingList();
+
+      // Barra flotante inferior
+      const floatingBar = document.getElementById('floating-itinerary-bar');
+      if (count > 0) {
+        floatingBar.classList.remove('hidden');
+        document.getElementById('floating-count').innerText = `${count} ${count === 1 ? 'actividad' : 'actividades'}`;
+        const preview = myDailyRoute.map(e => `${e.time.split(' ')[0]} ${e.title.split(' ')[0]}`).join(' • ');
+        document.getElementById('floating-preview').innerText = preview;
+      } else {
+        floatingBar.classList.add('hidden');
+      }
+
+      renderDailyRouteTimeline();
+      updatePhoneItinerary();
+    }
+
+    function renderDailyRouteTimeline() {
+      const container = document.getElementById('daily-route-timeline');
+      if (!container) return;
+
+      document.getElementById('route-modal-badge').innerText = `${myDailyRoute.length} Actividades`;
+      document.getElementById('route-summary-count').innerText = `${myDailyRoute.length} actividades organizadas`;
+
+      if (myDailyRoute.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-12 text-slate-400">
+            <i class="fa-solid fa-calendar-xmark text-4xl mb-3 text-slate-300"></i>
+            <h4 class="font-bold text-slate-700 text-sm">Tu itinerario está vacío</h4>
+            <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">Selecciona actividades en la pantalla táctil pulsando "+ Ruta" para organizar tu recorrido cultural y deportivo del día.</p>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '';
+      myDailyRoute.forEach((ev, idx) => {
+        const isLast = idx === myDailyRoute.length - 1;
+        html += `
+          <div class="flex items-start gap-3.5 relative">
+            <div class="flex flex-col items-center">
+              <div class="w-8 h-8 rounded-full bg-[#0F2C59] text-amber-400 font-black text-xs flex items-center justify-center shadow">
+                ${idx + 1}
+              </div>
+              ${!isLast ? '<div class="w-0.5 h-16 bg-slate-300 my-1"></div>' : ''}
+            </div>
+
+            <div class="flex-1 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <img src="${ev.img}" onerror="imgFallback(this, '${ev.category}')" class="w-14 h-14 rounded-xl object-cover shrink-0 shadow-sm">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md">${ev.time}</span>
+                    <span style="background:${ev.color}" class="text-white text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">${ev.category}</span>
+                  </div>
+                  <h4 class="font-extrabold text-slate-900 text-sm mt-1">${ev.title}</h4>
+                  <p class="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                    <i class="fa-solid fa-location-dot text-red-500"></i> ${ev.venue}
+                  </p>
+                </div>
+              </div>
+              
+              <div class="flex items-center gap-2">
+                <button onclick="locateEventOnMap(allCaracasEvents.find(e => e.id === '${ev.id}'))" class="p-2 text-slate-400 hover:text-blue-600 text-xs" title="Ver en mapa">
+                  <i class="fa-solid fa-map-pin"></i>
+                </button>
+                <button onclick="toggleRouteItem(allCaracasEvents.find(e => e.id === '${ev.id}'))" class="p-2 text-slate-400 hover:text-red-600 text-xs" title="Quitar de mi ruta">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    function openDailyRouteModal() {
+      renderDailyRouteTimeline();
+      document.getElementById('modal-daily-route').classList.remove('hidden');
+      speak(`Tu ruta del día tiene ${myDailyRoute.length} actividades organizadas.`);
+    }
+
+    function closeDailyRouteModal() {
+      document.getElementById('modal-daily-route').classList.add('hidden');
+    }
+
+    function clearDailyRoute() {
+      myDailyRoute = [];
+      updateRouteUI();
+      speak("Itinerario cultural reiniciado.");
+    }
+
+    function loadPresetRoute(type) {
+      if (type === 'deporte_musica') {
+        myDailyRoute = [
+          todayEvents.find(e => e.id === "th-d1"), // 08:00 AM Trote Los Caobos
+          todayEvents.find(e => e.id === "th-g1"), // 12:00 PM Feria Gastronómica Candelaria
+          todayEvents.find(e => e.id === "th-m2")  // 19:30 PM Concierto Altamira
+        ].filter(Boolean);
+        showToast("Ruta Deporte + Música", "3 actividades cargadas en tu itinerario.");
+      } else if (type === 'cultura_gastro') {
+        myDailyRoute = [
+          todayEvents.find(e => e.id === "th-tu1"), // 10:30 AM Casco Histórico
+          todayEvents.find(e => e.id === "th-g2"),  // 16:00 PM Café y Cacao
+          todayEvents.find(e => e.id === "th-t1")   // 18:00 PM Teatro Teresa Carreño
+        ].filter(Boolean);
+        showToast("Ruta Historia & Sabores", "3 actividades cargadas en tu itinerario.");
+      }
+      myDailyRoute.sort((a, b) => a.timeHour - b.timeHour);
+      updateRouteUI();
+      speak("Itinerario de ejemplo cargado.");
+    }
+
+    function showRouteOnCaracasMap() {
+      closeDailyRouteModal();
+      openCaracasMapModal();
+      setTimeout(() => {
+        filterMapCategory('myroute');
+        drawCompleteDailyRouteOnMap();
+      }, 350);
+    }
+
+    function drawCompleteDailyRouteOnMap() {
+      if (!leafletMap || myDailyRoute.length === 0) return;
+      if (mapRouteLine) {
+        leafletMap.removeLayer(mapRouteLine);
+      }
+
+      const routePoints = [ORIGIN_STOP.coords, ...myDailyRoute.map(e => e.coords)];
+      mapRouteLine = L.polyline(routePoints, {
+        color: '#F4B400',
+        weight: 5,
+        opacity: 0.9,
+        dashArray: '10, 8'
+      }).addTo(leafletMap);
+
+      leafletMap.fitBounds(mapRouteLine.getBounds(), { padding: [60, 60] });
+    }
+
+    function transferDailyRouteQR() {
+      closeDailyRouteModal();
+      document.getElementById('qr-modal-title').innerText = "Transferir Mi Ruta del Día";
+      document.getElementById('qr-modal-subtitle').innerText = `Tu itinerario de ${myDailyRoute.length} actividades organizadas listo para tu smartphone.`;
+      document.getElementById('qr-status-msg').innerText = `✓ Itinerario sincronizado: ${myDailyRoute.length} actividades vinculadas`;
+      document.getElementById('modal-qr').classList.remove('hidden');
+    }
+
+    function updatePhoneItinerary() {
+      const container = document.getElementById('phone-itinerary-items');
+      if (!container) return;
+
+      document.getElementById('phone-itinerary-badge').innerText = `${myDailyRoute.length} Paradas`;
+
+      if (myDailyRoute.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-500 italic">No hay actividades en tu itinerario.</p>`;
+        return;
+      }
+
+      let html = '';
+      myDailyRoute.forEach((ev, idx) => {
+        html += `
+          <div class="p-2.5 bg-slate-800/90 rounded-xl border border-slate-700/80 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5">
+              <span class="w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] flex items-center justify-center shrink-0">
+                ${idx + 1}
+              </span>
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[10px] font-bold text-amber-300 font-mono">${ev.time}</span>
+                  <span class="text-[9px] text-slate-400">• ${ev.venue}</span>
+                </div>
+                <h5 class="text-xs font-bold text-white leading-tight">${ev.title}</h5>
+              </div>
+            </div>
+            <input type="checkbox" class="rounded text-amber-500 focus:ring-0 bg-slate-700 border-slate-600">
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+    }
+
+    function showToast(title, msg) {
+      const toast = document.getElementById('toast-notice');
+      document.getElementById('toast-title').innerText = title;
+      document.getElementById('toast-msg').innerText = msg;
+      toast.classList.remove('translate-y-[-150%]', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+      setTimeout(() => {
+        toast.classList.add('translate-y-[-150%]', 'opacity-0');
+        toast.classList.remove('translate-y-0', 'opacity-100');
+      }, 2600);
+    }
+
+    // ==========================================
+    // MAPA LEAFLET DE CARACAS
+    // ==========================================
+    let leafletMap = null;
+    let mapMarkersLayer = null;
+    let mapRouteLine = null;
+    let currentMapFilter = 'all';
+
+    function initCaracasMap() {
+      if (leafletMap) return;
+
+      leafletMap = L.map('caracas-leaflet-map', {
+        center: [10.4980, -66.8850],
+        zoom: 13,
+        zoomControl: true
+      });
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO • CulturaViva CCS',
+        maxZoom: 19
+      }).addTo(leafletMap);
+
+      mapMarkersLayer = L.layerGroup().addTo(leafletMap);
+
+      const originIcon = L.divIcon({
+        className: 'radar-pulse',
+        html: `
+          <div style="width:32px; height:32px; background:#F4B400; border:3px solid #0F2C59; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#0F2C59; font-weight:900; font-size:14px; box-shadow:0 4px 10px rgba(0,0,0,0.4);">
+            <i class="fa-solid fa-location-dot"></i>
+          </div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+
+      const originMarker = L.marker(ORIGIN_STOP.coords, { icon: originIcon }).addTo(leafletMap);
+      originMarker.bindPopup(`
+        <div style="padding:12px; font-family:Inter, sans-serif;">
+          <div style="font-size:10px; font-weight:800; color:#F4B400; background:#0F2C59; padding:2px 8px; border-radius:6px; display:inline-block; margin-bottom:4px;">
+            ¡ESTÁS AQUÍ!
+          </div>
+          <h4 style="font-size:13px; font-weight:800; color:#0F2C59; margin:0;">${ORIGIN_STOP.name}</h4>
+          <p style="font-size:11px; color:#64748B; margin:4px 0 0 0;">Tótem Inteligente #04 conectado a la red metropolitana.</p>
+        </div>
+      `);
+
+      renderMapMarkers();
+    }
+
+    function renderMapMarkers() {
+      if (!mapMarkersLayer) return;
+      mapMarkersLayer.clearLayers();
+
+      let filtered = [];
+      if (currentMapFilter === 'all') {
+        filtered = allCaracasEvents;
+      } else if (currentMapFilter === 'myroute') {
+        filtered = myDailyRoute;
+      } else {
+        filtered = allCaracasEvents.filter(e => e.category === currentMapFilter);
+      }
+
+      let sidebarHtml = '';
+
+      filtered.forEach((ev, idx) => {
+        const inRoute = isEventInRoute(ev.id);
+        const orderNumber = currentMapFilter === 'myroute' ? (idx + 1) : null;
+
+        const markerIcon = L.divIcon({
+          className: 'custom-event-marker',
+          html: `
+            <div style="width:32px; height:32px; background:${inRoute ? '#F4B400' : ev.color}; border:2.5px solid ${inRoute ? '#0F2C59' : '#ffffff'}; border-radius:50%; display:flex; align-items:center; justify-content:center; color:${inRoute ? '#0F2C59' : '#ffffff'}; font-size:12px; font-weight:900; box-shadow:0 4px 12px rgba(0,0,0,0.35); cursor:pointer;">
+              ${orderNumber ? orderNumber : `<i class="fa-solid fa-${ev.icon}"></i>`}
+            </div>
+          `,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        });
+
+        const marker = L.marker(ev.coords, { icon: markerIcon }).addTo(mapMarkersLayer);
+
+        marker.bindPopup(`
+          <div style="width:240px; font-family:Inter, sans-serif;">
+            <div style="height:90px; overflow:hidden; position:relative; background:#0F2C59;">
+              <img src="${ev.img}" onerror="imgFallback(this, '${ev.category}')" style="width:100%; height:100%; object-fit:cover;">
+              <span style="position:absolute; top:6px; left:6px; background:${ev.color}; color:#fff; font-size:9px; font-weight:800; padding:2px 6px; border-radius:4px; text-transform:uppercase;">
+                ${ev.category}
+              </span>
+              <span style="position:absolute; top:6px; right:6px; background:#0F2C59; color:#fff; font-size:9px; font-weight:800; padding:2px 6px; border-radius:4px;">
+                ${ev.time}
+              </span>
+            </div>
+            <div style="padding:10px;">
+              <h4 style="font-size:12px; font-weight:800; color:#0F2C59; margin:0 0 4px 0; line-height:1.2;">${ev.title}</h4>
+              <p style="font-size:10px; color:#475569; margin:0 0 6px 0;"><i class="fa-solid fa-location-dot" style="color:#dc2626;"></i> ${ev.venue}</p>
+              <div style="background:#F1F5F9; padding:5px 8px; border-radius:8px; font-size:10px; color:#334155; margin-bottom:8px;">
+                <strong>Cómo llegar:</strong> ${ev.transit}
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button onclick="toggleRouteItem(allCaracasEvents.find(e => e.id === '${ev.id}'))" style="flex:1; background:${inRoute ? '#16A34A' : '#0F2C59'}; color:#fff; border:none; padding:6px 8px; border-radius:6px; font-size:10px; font-weight:800; cursor:pointer;">
+                  ${inRoute ? '✓ En Mi Ruta' : '+ A Mi Ruta'}
+                </button>
+                <button onclick="triggerQR(allCaracasEvents.find(e => e.id === '${ev.id}'))" style="background:#F4B400; color:#0F2C59; border:none; padding:6px 8px; border-radius:6px; font-size:10px; font-weight:800; cursor:pointer;">
+                  QR
+                </button>
+              </div>
+            </div>
+          </div>
+        `);
+
+        sidebarHtml += `
+          <div onclick="focusEventOnMap('${ev.id}')" class="p-2.5 bg-white hover:bg-amber-50/60 rounded-xl border border-slate-200 transition cursor-pointer flex items-center justify-between gap-2 shadow-sm">
+            <div class="flex items-center gap-2.5">
+              <span style="background:${inRoute ? '#F4B400' : ev.color}" class="w-7 h-7 rounded-lg text-${inRoute ? 'slate-950' : 'white'} flex items-center justify-center text-xs shrink-0 shadow-sm font-bold">
+                ${orderNumber ? orderNumber : `<i class="fa-solid fa-${ev.icon}"></i>`}
+              </span>
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[10px] font-bold text-slate-900 bg-slate-100 px-1.5 rounded">${ev.time}</span>
+                  ${inRoute ? '<span class="text-[9px] text-emerald-600 font-bold">● En tu Ruta</span>' : ''}
+                </div>
+                <h5 class="text-xs font-bold text-slate-900 leading-tight mt-0.5">${ev.title}</h5>
+                <p class="text-[10px] text-slate-500">${ev.venue}</p>
+              </div>
+            </div>
+            <button onclick="event.stopPropagation(); toggleRouteItem(allCaracasEvents.find(e => e.id === '${ev.id}'))" class="text-xs ${inRoute ? 'text-emerald-600 font-bold' : 'text-slate-400 hover:text-blue-600'} p-1">
+              <i class="fa-solid ${inRoute ? 'fa-check-circle text-base' : 'fa-plus-circle text-base'}"></i>
+            </button>
+          </div>
+        `;
+      });
+
+      document.getElementById('map-places-list').innerHTML = sidebarHtml;
+      document.getElementById('map-event-count').innerText = `${filtered.length} Sitios`;
+    }
+
+    function openCaracasMapModal() {
+      document.getElementById('modal-caracas-map').classList.remove('hidden');
+      setTimeout(() => {
+        initCaracasMap();
+        if (leafletMap) {
+          leafletMap.invalidateSize();
+          leafletMap.setView([10.4980, -66.8850], 13);
+        }
+      }, 150);
+      speak("Abriendo mapa interactivo de Caracas.");
+    }
+
+    function closeCaracasMapModal() {
+      document.getElementById('modal-caracas-map').classList.add('hidden');
+      if (mapRouteLine && leafletMap) {
+        leafletMap.removeLayer(mapRouteLine);
+        mapRouteLine = null;
+      }
+    }
+
+    function filterMapCategory(catKey) {
+      currentMapFilter = catKey;
+      document.querySelectorAll('.map-filter-pill').forEach(btn => {
+        btn.className = "map-filter-pill px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-white hover:bg-slate-700";
+      });
+      const activePill = document.getElementById(`map-pill-${catKey}`);
+      if (activePill) {
+        activePill.className = "map-filter-pill px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-400 text-slate-950 shadow";
+      }
+
+      if (catKey === 'myroute') {
+        drawCompleteDailyRouteOnMap();
+      } else {
+        if (mapRouteLine && leafletMap) {
+          leafletMap.removeLayer(mapRouteLine);
+          mapRouteLine = null;
+        }
+      }
+      renderMapMarkers();
+    }
+
+    function openCaracasMapForCategory(catKey) {
+      openCaracasMapModal();
+      filterMapCategory(catKey === 'all' ? 'all' : catKey);
+    }
+
+    function focusEventOnMap(eventId) {
+      const ev = allCaracasEvents.find(e => e.id === eventId);
+      if (!ev || !leafletMap) return;
+      leafletMap.flyTo(ev.coords, 15, { duration: 1.2 });
+    }
+
+    function centerMapOnOrigin() {
+      if (leafletMap) {
+        leafletMap.flyTo(ORIGIN_STOP.coords, 16, { duration: 1 });
+      }
+    }
+
+    function resetCaracasMapView() {
+      if (leafletMap) {
+        leafletMap.flyTo([10.4980, -66.8850], 13, { duration: 1 });
+      }
+    }
+
+    function locateEventOnMap(eventObj) {
+      if (!eventObj) return;
+      openCaracasMapModal();
+      setTimeout(() => {
+        focusEventOnMap(eventObj.id);
+      }, 300);
+    }
+
+    function locateCurrentModalOnMap() {
+      closeDetailModal();
+      locateEventOnMap(selectedEventForModal);
+    }
+
+    // ==========================================
+    // MODAL DE DETALLE Y CÓDIGO QR
+    // ==========================================
+    function openDetailModal(eventObj) {
+      if (!eventObj) eventObj = todayEvents[0];
+      selectedEventForModal = eventObj;
+      document.getElementById('modal-img').src = eventObj.img;
+      document.getElementById('modal-title').innerText = eventObj.title;
+      document.getElementById('modal-venue').innerHTML = `<i class="fa-solid fa-location-dot text-red-600 mr-1"></i> ${eventObj.venue} • ${eventObj.time}`;
+      document.getElementById('modal-desc').innerText = eventObj.desc;
+      document.getElementById('modal-transit').innerText = eventObj.transit;
+      document.getElementById('modal-badge-cat').innerText = eventObj.category.toUpperCase();
+      document.getElementById('modal-badge-cat').style.backgroundColor = eventObj.color;
+      updateModalRouteButton();
+      document.getElementById('modal-detail').classList.remove('hidden');
+    }
+
+    function closeDetailModal() {
+      document.getElementById('modal-detail').classList.add('hidden');
+    }
+
+    function triggerQR(eventObj) {
+      if (eventObj) selectedEventForModal = eventObj;
+      document.getElementById('qr-modal-title').innerText = "Transferir Actividad al Móvil";
+      document.getElementById('qr-modal-subtitle').innerText = `${selectedEventForModal.title} (${selectedEventForModal.time})`;
+      document.getElementById('qr-status-msg').innerText = `✓ Sincronización instantánea sin descarga previa`;
+      document.getElementById('modal-qr').classList.remove('hidden');
+    }
+
+    function triggerQRFromModal() {
+      closeDetailModal();
+      triggerQR(selectedEventForModal);
+    }
+
+    function closeQrModal() {
+      document.getElementById('modal-qr').classList.add('hidden');
+    }
+
+    function syncAndOpenPhoneView() {
+      closeQrModal();
+      const drawer = document.getElementById('phone-drawer');
+      drawer.classList.remove('translate-x-full');
+      speak(`Itinerario sincronizado con tu smartphone. Tienes ${myDailyRoute.length} actividades en tu ruta.`);
+    }
+
+    function togglePhoneDrawer() {
+      const drawer = document.getElementById('phone-drawer');
+      drawer.classList.toggle('translate-x-full');
+    }
+
+    // ==========================================
+    // RELOJ, ACCESIBILIDAD E IDIOMAS
+    // ==========================================
+    function updateClock() {
+      const now = new Date();
+      const hrs = String(now.getHours()).padStart(2, '0');
+      const mins = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('live-clock').innerText = `${hrs}:${mins}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    function speak(text) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'es-VE';
+        utterance.rate = 1.0;
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    function readScreenAloud() {
+      speak(`Bienvenido a CulturaViva Caracas. Actualmente estás viendo las actividades organizadas cronológicamente por hora. Selecciona cualquier categoría abajo para filtrar o presiona Mi Ruta del Día para ver tu itinerario.`);
+    }
+
+    function readModalAloud() {
+      speak(`${selectedEventForModal.title} en ${selectedEventForModal.venue} a las ${selectedEventForModal.time}. ${selectedEventForModal.desc}.`);
+    }
+
+    function setLanguage(lang) {
+      document.querySelectorAll('#lang-es, #lang-en, #lang-pt').forEach(b => b.classList.remove('text-amber-400'));
+      document.getElementById(`lang-${lang}`).classList.add('text-amber-400');
+      if (lang === 'en') {
+        speak("English language selected for CulturaViva Caracas itinerary software.");
+      } else if (lang === 'pt') {
+        speak("Língua portuguesa selecionada no sistema CulturaViva Caracas.");
+      } else {
+        speak("Idioma español activado.");
+      }
+    }
+
+    // ==========================================
+    // AJUSTE DINÁMICO DE ANCHO (SPLITTER ARRASTRABLE + BOTÓN AMPLIAR)
+    // ==========================================
+    let isMainExpanded = false;
+
+    function toggleExpandMainPanel() {
+      const leftPanel = document.getElementById('left-today-panel');
+      const rightPanel = document.getElementById('right-upcoming-panel');
+      const resizer = document.getElementById('panel-resizer');
+      const label = document.getElementById('label-toggle-expand');
+      const icon = document.getElementById('icon-toggle-expand');
+
+      isMainExpanded = !isMainExpanded;
+      if (isMainExpanded) {
+        leftPanel.classList.add('expanded-full');
+        rightPanel.classList.add('lg:hidden');
+        resizer.classList.replace('lg:flex', 'lg:hidden');
+        if (label) label.innerText = 'Dividir Vista';
+        if (icon) icon.className = 'fa-solid fa-down-left-and-up-right-to-center text-amber-400';
+      } else {
+        leftPanel.classList.remove('expanded-full');
+        rightPanel.classList.remove('lg:hidden');
+        resizer.classList.replace('lg:hidden', 'lg:flex');
+        if (label) label.innerText = 'Ampliar';
+        if (icon) icon.className = 'fa-solid fa-up-right-and-down-left-from-center text-amber-400';
+      }
+    }
+
+    function initPanelResizer() {
+      const resizer = document.getElementById('panel-resizer');
+      const container = document.getElementById('panels-split');
+      const leftPanel = document.getElementById('left-today-panel');
+      if (!resizer || !container || !leftPanel) return;
+
+      let dragging = false;
+
+      resizer.addEventListener('pointerdown', (e) => {
+        dragging = true;
+        resizer.setPointerCapture(e.pointerId);
+        document.body.style.cursor = 'col-resize';
+        e.preventDefault();
+      });
+
+      resizer.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const rect = container.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        let pct = ((e.clientX - rect.left) / rect.width) * 100;
+        pct = Math.max(45, Math.min(82, pct));
+        leftPanel.style.setProperty('--left-panel-pct', `${pct.toFixed(1)}%`);
+      });
+
+      const stopDrag = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        document.body.style.cursor = '';
+        try { resizer.releasePointerCapture(e.pointerId); } catch (_) {}
+      };
+
+      resizer.addEventListener('pointerup', stopDrag);
+      resizer.addEventListener('pointercancel', stopDrag);
+    }
+
+    // Inicialización al cargar la página
+    window.addEventListener('DOMContentLoaded', () => {
+      initPanelResizer();
+      resetToAllCategories();
+      updateRouteUI();
+    });
+  </script>
+</body>
+
+</html>
